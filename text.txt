@@ -1,0 +1,360 @@
+public class UserLogin
+    {
+
+        [Required(ErrorMessage = "Please Provide Email")]
+        [RegularExpression("^[a-zA-Z0-9_\\.-]+@([a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,6}$", ErrorMessage = "Invalid Email")]
+
+        public string EMAIL { get; set; }
+
+        [Required(ErrorMessage = "Please Provide Passwords")]
+
+        public string PASSWORDS { get; set; }
+    }
+
+   public class Registration
+    {
+
+        [Required(ErrorMessage = "Please Provide Name")]
+
+        public string NAME { get; set; }
+
+        [Required(ErrorMessage = "Please Provide Email")]
+        [RegularExpression("^[a-zA-Z0-9_\\.-]+@([a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,6}$", ErrorMessage = "Invalid Email")]
+        public string EMAIL { get; set; }
+
+        [Required(ErrorMessage = "Please Provide Phone Number")]
+
+        public long PHONENUMBER { get; set; }
+
+        [Required(ErrorMessage = "Please Provide Passwords")]
+        [DataType(DataType.Password)]
+        public string PASSWORDS { get; set; }
+
+        [Required(ErrorMessage = "Please Provide Conform Passwords")]
+        [DataType(DataType.Password)]
+        [Compare("PASSWORDS")]
+        public string CONFORMPASSWORDS { get; set; }
+
+
+
+    }
+
+ public  interface IUserLogin
+    {
+
+        int Login(string uname, string password);
+        int ForgotPassword(string email);
+
+        void RegiesterLogin(Registration obj);
+
+        IEnumerable<Registration> GetRegistration();
+
+        int ChangePassword(ChPassword obj);
+
+        int CheckOTP(ChPassword obj);
+
+    }
+
+ public class UserLoginRepository : IUserLogin
+    {
+
+        string conString;
+
+        public UserLoginRepository(string cs)
+        {
+            conString = cs;
+        }
+        public IEnumerable<Registration> GetRegistration()
+        {
+            IEnumerable<Registration> data = null;
+            IDbConnection con = new SqlConnection(conString);
+            con.Open();
+            DynamicParameters para = new DynamicParameters();
+            data = con.Query<Registration>("GetResistration",commandType: CommandType.StoredProcedure).ToList();
+            con.Close();
+            return data;
+        }
+
+        public void RegiesterLogin(Registration obj)
+        {
+            IDbConnection con = new SqlConnection(conString);
+
+            con.Open();
+            DynamicParameters para = new DynamicParameters();
+            para.Add("@NAME", obj.NAME);
+            para.Add("@EMAIL", obj.EMAIL);
+            para.Add("@PHONENUMBER", obj.PHONENUMBER);
+            para.Add("@PASSWORDS", obj.PASSWORDS);
+
+            var list = con.Query<Registration>("LoginReg", param: para, commandType: CommandType.StoredProcedure);
+            con.Close();
+
+        }
+
+
+        public int Login(string uname, string password)
+        {
+            IDbConnection con = new SqlConnection(conString);
+
+            con.Open();
+            DynamicParameters para = new DynamicParameters();
+            para.Add("@EMAIL", uname);
+            para.Add("@PASSWORDS", password);
+            para.Add("@Result", dbType: DbType.Int32, direction: ParameterDirection.Output, size: 100);
+
+
+            var list = con.Query<UserLogin>("CheckLogin", param: para, commandType: CommandType.StoredProcedure);
+            con.Close();
+
+            return para.Get<Int32>("Result");
+        }
+
+        public int ChangePassword(ChPassword obj)
+        {
+
+            IDbConnection con = new SqlConnection(conString);
+
+            con.Open();
+            DynamicParameters para = new DynamicParameters();
+            para.Add("@EMAIL", obj.Email);
+            para.Add("@OldPassword", obj.OldPassword);
+            para.Add("@NewPassword", obj.NewPassword);
+            para.Add("@Result", dbType: DbType.Int32, direction: ParameterDirection.Output, size: 100);
+
+
+            var list = con.Query<ChPassword>("chpassword", param: para, commandType: CommandType.StoredProcedure);
+            con.Close();
+
+            return para.Get<Int32>("Result");
+
+
+        }
+
+        public int ForgotPassword(string email)
+        {
+
+            IDbConnection con = new SqlConnection(conString);
+
+            con.Open();
+            DynamicParameters para = new DynamicParameters();
+            para.Add("@EMAIL", email);
+            
+
+            var list = con.Query<ChPassword>("OneTimePassword", param: para, commandType: CommandType.StoredProcedure);
+            con.Close();
+
+            return 1;
+
+        }
+
+        public int CheckOTP(ChPassword obj)
+        {
+            
+            IDbConnection con = new SqlConnection(conString);
+
+            con.Open();
+            DynamicParameters para = new DynamicParameters();
+            para.Add("@EMAIL", obj.Email);
+            para.Add("@OTP", obj.OTP);
+            para.Add("@Result", dbType: DbType.Int32, direction: ParameterDirection.Output, size: 100);
+
+            var list = con.Query<ChPassword>("CheckOTP", param: para, commandType: CommandType.StoredProcedure);
+            con.Close();
+
+            return para.Get<Int32>("Result");
+        }
+    }
+
+
+    public class LoginController : Controller
+    {
+        public IUserLogin GetUserLoginRepository;
+        public LoginController(IUserLogin obj1)
+        {
+            GetUserLoginRepository = obj1;
+        }
+
+
+
+        public ActionResult UserLogin()
+        {
+            Session["smail"] = null;
+            return View();
+        }
+        [HttpPost]
+        public ActionResult UserLogin(UserLogin obj)
+        {
+
+            int value = GetUserLoginRepository.Login(obj.EMAIL, obj.PASSWORDS);
+
+
+            if (value == 1)
+            {
+                Session["smail"] = obj.EMAIL;
+                return RedirectToAction("WebPage", "Login");
+            }
+            else if (value == -1) {
+
+                TempData["error"] = "Wrong Password";
+
+                return View("UserLogin");
+            }
+            else {
+                TempData["emailError"] = "Email not exist";
+                return View();
+            }
+
+
+        }
+
+        public ActionResult Register() {
+
+
+            return View();
+        }
+
+        [HttpPost]
+        public ActionResult Register(Registration obj)
+        {
+
+            GetUserLoginRepository.RegiesterLogin(obj);
+
+            return View("UserLogin");
+        }
+
+        public ActionResult WebPage() {
+
+            if (Session["smail"] == null)
+            {
+
+                return RedirectToAction("UserLogin", "Login");
+
+            }
+            else {
+                Session["pass"] = Session["smail"];
+                return View();
+            }
+
+
+        }
+
+        [SessionValidate]
+        public ActionResult ChPassword()
+        {
+
+            return View();
+            //if (Session["smail"] == null)
+            //{
+            //    return RedirectToAction("UserLogin", "Login");
+            //}
+            //else {
+            //    return View();
+            //}
+
+        }
+
+        [HttpPost]
+        public ActionResult ChPassword(ChPassword obj)
+        {
+
+            obj.Email = Session["smail"].ToString();
+            int num = GetUserLoginRepository.ChangePassword(obj);
+
+            if (num == 1)
+            {
+                Session["smail"] = null;
+                return View("UserLogin");
+            }
+            else {
+                TempData["error"] = "Password Incorrect";
+                return View();
+
+            }
+
+        }
+
+        public ActionResult ForgotPassword() {
+
+            return View();
+
+        }
+
+        [HttpPost]
+        public ActionResult ForgotPassword(ChPassword obj)
+        {
+
+            int value = GetUserLoginRepository.Login(obj.Email, obj.OldPassword);
+
+
+            if (value == -1)
+            {
+                // return View("OTP", "Login", new { obj.Email});
+                return RedirectToAction("OTP", "Login", new { obj.Email });
+            }
+            else {
+
+                TempData["emailError"] = "Email not exist";
+                return View();
+
+            }
+
+        }
+
+        public ActionResult OTP(string Email) {
+
+            GetUserLoginRepository.ForgotPassword(Email);
+            TempData["chmail"] = Email;
+
+            return View();
+        }
+
+        [HttpPost]
+        public ActionResult OTP(ChPassword obj) {
+
+            int value = GetUserLoginRepository.CheckOTP(obj);
+
+            if (value == 1)
+            {
+                return RedirectToAction("NewPassword", "Login", new { obj.Email });
+            }
+            else {
+                TempData["checkOTP"] = "OTP Incorrect";
+                return View();
+            }
+
+
+        }
+
+        public ActionResult NewPassword(string Email) {
+
+            TempData["cemail"] = Email;
+
+            return View();
+        }
+
+        [HttpPost]
+        public ActionResult NewPassword(ChPassword obj) {
+
+            GetUserLoginRepository.ChangePassword(obj);
+
+            return View("UserLogin");
+
+        }
+
+        public ActionResult AllDetails()
+        {
+            var data = GetUserLoginRepository.GetRegistration().ToList<Registration>();
+            // var jsondata = JsonConvert.SerializeObject(data);
+
+            return Json(data, JsonRequestBehavior.AllowGet);
+        }
+
+        public ActionResult SubjectInsertUpdate()
+        {
+
+
+            return View();
+        }
+
+
+}
